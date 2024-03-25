@@ -1,0 +1,240 @@
+<html><head>
+  <!--- D3 Import --->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <h2>How do humans spend their day?</h1>
+
+  <select id="dropdown_container"></select>
+  <!-- <div id="dropdown_container"></div> -->
+
+  <style>
+  body {
+    display: flex; 
+    justify-content: center;
+    align-items: center;
+  }
+  h2 {
+    text-align: center;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+  }
+
+  text {
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    font-size: 14pt;
+    /* color: #8b8b8b; */
+    color: white;
+  }
+
+  #dropdown_container {
+    width: fit-content;
+    height:fit-content;
+  }
+
+  .axis {
+    /* color: #8b8b8b; */
+    color: white;
+    font-size: 14pt;
+  }
+
+  .axis line {
+    /* stroke: #8b8b8b; */
+    stroke: white;
+  }
+
+  .axis path {
+    display: none;
+  }
+
+  #yAxis line {
+    display: none;
+  }
+
+  </style>
+
+  <script>
+    document.body.style.backgroundImage = "url(federico-respini-sYffw0LNr7s-unsplash.jpg)";
+    document.body.style.backgroundSize = "Cover";
+
+
+    const requestData = async() => {
+      //Import data
+      let allCountries = await d3.csv("all_countries.csv", d3.autoType)
+      let day = await d3.csv("global_human_day_cleaned.csv")
+      let allCategories = await d3.csv("global_human_day_categories.csv")
+      let countryCodes = await d3.csv("country-codes.csv")
+      console.log(allCategories)
+      
+      //Initiate Dropdown
+      mydropDown(countryCodes)
+
+      //Create SVG
+      const body = d3.select("body")
+                      .append("svg")
+                      .attr("id", "plot")
+                      .attr("width", (window.innerWidth / 2) + 100)
+                      .attr("height", window.innerHeight - 20)
+      
+      const svg = d3.select("#plot")
+      const margin = {top: 25, bottom: 50, left:50, right: 50}
+      const plotWidth = svg.attr("width") - margin.left - margin.right;
+      const plotHeight = svg.attr("height") - margin.top - margin.bottom;
+
+      let annotations = svg.append("g").attr("id", "annotations")
+      let barArea = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`)
+
+
+      //Set up scales and axes
+      const hourScale = d3.scaleLinear().domain([0, 24]).range([0, plotWidth])
+      const categories = d3.map(day, d => d.Category)
+      const categoryScale = d3.scaleBand().domain(categories).range([0, plotHeight]).padding(0.05)
+      const colorScale = d3.scaleOrdinal(d3.schemeTableau10)
+
+      const bottomAxis = d3.axisBottom(hourScale)
+      const leftAxis = d3.axisLeft(categoryScale)
+
+      annotations.append("g")
+                  .attr("class", "x axis")
+                  .attr("transform",`translate(${margin.left},${plotHeight + margin.top})`)
+                  .call(bottomAxis)
+
+      function hoursToHHMM(hours) {
+        var h = String(Math.trunc(hours)).padStart(2, '0');
+        var m = String(Math.abs(Math.round((hours - h) * 60))).padStart(2, '0');
+        if(h == "00") { return m + "m"}
+        return h + "h " + m + "m";
+      }
+
+      //Create bars 
+      function updateBarsAnimated(dat) {
+        console.log(dat)
+
+        let fullBars = barArea.selectAll("rect.full").data(dat)
+                              .join("rect").attr("class", "full")
+                              .attr("fill", "#fafafa")
+                              .attr("x", 0)
+                              .attr("y", d => categoryScale(d.Category))
+                              .attr('rx', 5)
+                              .attr("height", categoryScale.bandwidth())
+                              .attr("width", plotWidth)
+                              .attr("opacity", 0.8)
+
+        let bars = barArea.selectAll("rect.bar").data(dat)
+                            .join(enter => enter.append ("rect")
+                                                .attr("class", "bar")
+                                                .attr("x", 0)
+                                                .attr("y", d => categoryScale(d.Category))
+                                                .attr('rx', 5)
+                                                .attr("height", categoryScale.bandwidth())
+                                                .attr("width", d => hourScale(d.total))
+                                                .style("fill", d => colorScale(d.Category)),
+                                  update => update.call( update => update.transition()
+                                                                      .attr("x", 0)
+                                                                      .attr("y", d => categoryScale(d.Category))
+                                                                      .attr('rx', 5)
+                                                                      .attr("height", categoryScale.bandwidth())
+                                                                      .attr("width", d => hourScale(d.total)),
+                                  exit => exit.call( exit => exit.remove()))
+                           )
+        
+        let text = barArea.selectAll("text").data(dat)
+                          .join("text").attr("class", "text")
+                          .attr("x", d => hourScale(d.total) + 10)
+                          .attr("y", d => categoryScale(d.Category) + (categoryScale.bandwidth() / 2) + 8)
+                          .text(d => d.Category + " (" + hoursToHHMM(d.total) + ")")
+      }
+
+      
+      function mydropDown(data) {
+        //console.log(data);
+        var country = [];
+        for (var i in data) {
+          country.push(data[i].name);
+        };
+        console.log(country);
+
+        var dropDown = d3.select("#dropdown_container")
+          // .append("select")
+          // .attr("class", "selection")
+          // .attr("name", "country-list");
+        var options = dropDown.selectAll("option")
+          .data(data)
+          .enter()
+          .append("option");
+        options.text(function(d) {
+            return d.name;
+          })
+          .attr("value", function(d) {
+            return d.code;
+          });
+      }
+
+
+      updateBarsAnimated(day)
+      //Dropdown selection
+      d3.select("#dropdown_container").on("change", function(d) {
+        // recover the option that has been chosen
+        var newCode = d3.select(this).property('value');
+        if( newCode == "ALL") { 
+          updateBarsAnimated(day)
+          return;
+        }
+        var dat = [
+          {Category: "Somatic maintenance", total: 0},
+          {Category: "Experience oriented", total: 0},
+          {Category: "Organization", total: 0},
+          {Category: "Food provision", total: 0},
+          {Category: "Deliberate neural restructuring", total: 0},
+          {Category: "Maintenance of surroundings", total: 0},
+          {Category: "Technosphere modification", total: 0},
+          {Category: "Nonfood provision", total: 0}
+        ];
+
+        for (var i in allCountries) {
+          
+          if( newCode == allCountries[i].country_iso3) {
+            console.log(allCountries[i])
+            if(allCountries[i].Category == "Somatic maintenance") { dat[0].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Experience oriented") { dat[1].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Organization") { dat[2].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Food provision") { dat[3].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Deliberate neural restructuring") { dat[4].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Maintenance of surroundings") { dat[5].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Technosphere modification") { dat[6].total += allCountries[i].hoursPerDayCombined}
+            if(allCountries[i].Category == "Nonfood provision") { dat[7].total += allCountries[i].hoursPerDayCombined}
+          }
+        };
+
+        updateBarsAnimated(dat)
+        // run the updateChart function with this selected option
+        //update(selectedOption)
+      })
+
+      //Mouseover
+      let bars = d3.selectAll("rect").on("mouseover", function() {
+          subcategories = []
+          for (var key in allCategories){
+            if(d3.select(this).datum().Category == allCategories[key].Category) {
+              subcategories.push(allCategories[key].Subcategory)
+            }
+          }
+
+          d3.select("#plot")
+            .append("text")
+            .attr("id", "subcategories")
+            .attr("x", hourScale(d3.select(this).datum().total) + 60)
+            .attr("y", categoryScale(d3.select(this).datum().Category) + (categoryScale.bandwidth() / 2) + 55)
+            .style("font-size", 12)
+            .style("font-style", "italic")
+            .text(subcategories)
+        })
+
+      bars.on("mouseout", function() {
+          d3.select("#subcategories").remove()
+      })
+
+    }
+    requestData();
+  </script>
+</body>
+</html>
